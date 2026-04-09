@@ -1,0 +1,55 @@
+# Gitignore for AG-RAC
+
+# ─── Extracted game assets (NEVER commit these) ───────────────────────────────
+assets/textures/
+assets/models/
+assets/levels/
+assets/audio/
+assets/raw/
+extracted/
+
+# ─── Game ISOs / disc images ──────────────────────────────────────────────────
+*.iso
+*.bin
+*.cue
+*.img
+*.mdf
+*.mds
+
+# ─── Build artifacts ──────────────────────────────────────────────────────────
+build/
+build_pc/
+build_mips/
+*.o
+*.elf
+*.map
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# ─── Ghidra project files ─────────────────────────────────────────────────────
+*.gpr
+*.rep/
+ghidra_projects/
+
+# ─── IDE / editor ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.docstates
+*.DS_Store
+Thumbs.db
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
