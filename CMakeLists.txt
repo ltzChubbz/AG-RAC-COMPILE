@@ -3,12 +3,12 @@ project(ag_rac C)
 
 # ─── Build target selection ────────────────────────────────────────────────────
 # Usage:
-#   cmake -B build_mips -DTARGET=mips   # Cross-compile to MIPS for SHA1 matching
-#   cmake -B build_pc   -DTARGET=pc     # Native PC build with HAL layer
-set(TARGET "pc" CACHE STRING "Build target: 'pc' or 'mips'")
-set_property(CACHE TARGET PROPERTY STRINGS pc mips)
+#   cmake -B build_mips -DBUILD_TARGET=mips   # Cross-compile to MIPS for SHA1 matching
+#   cmake -B build_pc   -DBUILD_TARGET=pc     # Native PC build with HAL layer
+set(BUILD_TARGET "pc" CACHE STRING "Build target: 'pc' or 'mips'")
+set_property(CACHE BUILD_TARGET PROPERTY STRINGS pc mips)
 
-message(STATUS "AG-RAC build target: ${TARGET}")
+message(STATUS "AG-RAC build target: ${BUILD_TARGET}")
 
 # ─── Source files (shared between both targets) ────────────────────────────────
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
@@ -35,7 +35,7 @@ set(GAME_SRC
 include_directories(include)
 
 # ─── MIPS target — matching decompilation build ────────────────────────────────
-if(TARGET STREQUAL "mips")
+if(BUILD_TARGET STREQUAL "mips")
     message(STATUS "Configuring MIPS cross-compilation target (matching decompilation)")
 
     # Requires mipsel-linux-gnu-gcc in PATH (install via WSL: apt install gcc-mipsel-linux-gnu)
@@ -81,7 +81,7 @@ if(TARGET STREQUAL "mips")
     endif()
 
 # ─── PC target — native build with PS2 HAL ────────────────────────────────────
-elseif(TARGET STREQUAL "pc")
+elseif(BUILD_TARGET STREQUAL "pc")
     message(STATUS "Configuring native PC build target")
 
     set(CMAKE_C_STANDARD 11)
@@ -102,9 +102,24 @@ elseif(TARGET STREQUAL "pc")
     target_include_directories(rac_pc PRIVATE pc)
 
     # ── SDL2 ──────────────────────────────────────────────────────────────────
-    find_package(SDL2 REQUIRED)
-    target_include_directories(rac_pc PRIVATE ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(rac_pc PRIVATE ${SDL2_LIBRARIES})
+    # Try a local install first; fall back to FetchContent if not found.
+    find_package(SDL2 QUIET)
+    if(NOT SDL2_FOUND)
+        message(STATUS "SDL2 not found locally — fetching via FetchContent...")
+        include(FetchContent)
+        FetchContent_Declare(
+            SDL2
+            GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+            GIT_TAG        release-2.30.10
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_MakeAvailable(SDL2)
+        # FetchContent exposes SDL2::SDL2 as a target directly
+        target_link_libraries(rac_pc PRIVATE SDL2::SDL2)
+    else()
+        target_include_directories(rac_pc PRIVATE ${SDL2_INCLUDE_DIRS})
+        target_link_libraries(rac_pc PRIVATE ${SDL2_LIBRARIES})
+    endif()
 
     # ── OpenGL ────────────────────────────────────────────────────────────────
     find_package(OpenGL REQUIRED)
@@ -133,7 +148,7 @@ elseif(TARGET STREQUAL "pc")
     endif()
 
 else()
-    message(FATAL_ERROR "Unknown TARGET '${TARGET}'. Use -DTARGET=pc or -DTARGET=mips")
+    message(FATAL_ERROR "Unknown BUILD_TARGET '${BUILD_TARGET}'. Use -DBUILD_TARGET=pc or -DBUILD_TARGET=mips")
 endif()
 
 # ─── Custom targets for tooling ────────────────────────────────────────────────

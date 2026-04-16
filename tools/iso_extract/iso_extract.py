@@ -63,19 +63,24 @@ def open_iso(iso_path: Path):
 def list_iso_contents(iso, verbose=False):
     """Walk the ISO directory tree and return all file entries."""
     entries = []
-    for dir_record, file_path in iso.walk(iso_path="/"):
-        if dir_record.is_file():
+    for dirpath, dirnames, filenames in iso.walk(iso_path="/"):
+        for filename in filenames:
+            # Build full ISO path
+            if dirpath == "/":
+                file_path = "/" + filename
+            else:
+                file_path = dirpath.rstrip("/") + "/" + filename
             entries.append(file_path)
             if verbose:
-                size = dir_record.data_length
-                print(f"  {file_path:<50} {size:>10,} bytes")
+                print(f"  {file_path}")
     return entries
 
 
 def detect_game(entries: list[str]) -> tuple[str, str]:
     """Auto-detect which R&C game this is from the ELF filename."""
     for entry in entries:
-        filename = Path(entry).name.upper()
+        # Strip ISO 9660 version suffix (;1) before comparing
+        filename = Path(entry).name.upper().replace(";1", "")
         for game_id, elf_names in GAME_ELFS.items():
             for elf in elf_names:
                 if filename == elf.upper() or filename.replace(".", "_") == elf.upper().replace(".", "_"):
@@ -97,8 +102,10 @@ def extract_all(iso, entries: list[str], out_dir: Path, game_id: str, filter_ext
 
     for iso_path in entries:
         path = Path(iso_path)
-        ext = path.suffix.upper()
-        filename = path.name.upper()
+        # Strip ISO 9660 version suffix (;1) for extension/name checks
+        clean_name = path.name.replace(";1", "")
+        ext = Path(clean_name).suffix.upper()
+        filename = clean_name.upper()
 
         # Determine if we should extract this file
         should_extract = False
