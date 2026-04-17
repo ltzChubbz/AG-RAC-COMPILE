@@ -3,7 +3,7 @@
 
 a = Analysis(
     ['iso_extract_gui.py'],
-    pathex=[],
+    pathex=['..\\raw_extract'],
     binaries=[],
     datas=[],
     hiddenimports=[],

@@ -112,8 +112,15 @@ elseif(BUILD_TARGET STREQUAL "pc")
             GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
             GIT_TAG        release-2.30.10
             GIT_SHALLOW    TRUE
+            SYSTEM
         )
+        
+        # Suppress deprecation warnings locally
+        set(OLD_WARN_DEPRECATED ${CMAKE_WARN_DEPRECATED})
+        set(CMAKE_WARN_DEPRECATED OFF)
         FetchContent_MakeAvailable(SDL2)
+        set(CMAKE_WARN_DEPRECATED ${OLD_WARN_DEPRECATED})
+        
         # FetchContent exposes SDL2::SDL2 as a target directly
         target_link_libraries(rac_pc PRIVATE SDL2::SDL2)
     else()

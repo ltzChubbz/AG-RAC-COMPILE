@@ -11,10 +11,16 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
+# Add raw_extract path
+raw_extract_dir = str(Path(current_dir).parent / "raw_extract")
+if raw_extract_dir not in sys.path:
+    sys.path.append(raw_extract_dir)
+
 try:
     import iso_extract
+    import raw_extract
 except ImportError as e:
-    messagebox.showerror("Error", f"Could not import iso_extract: {e}")
+    messagebox.showerror("Error", f"Could not import modules: {e}")
     sys.exit(1)
 
 class PrintRedirector(io.StringIO):
@@ -143,13 +149,41 @@ class IsoExtractApp:
             elf_path = iso_extract.verify_elf(self.out_path, self.game_id)
             iso_extract.write_extraction_manifest(self.out_path, self.game_id, self.iso_path, extracted)
             
-            self.log_thread_safe("\nExtraction complete!")
+            self.log_thread_safe("\nISO 9660 Extraction complete!")
             if elf_path:
                 self.log_thread_safe(f"ELF verified: {elf_path.name}")
-            else:
-                self.log_thread_safe(f"WARNING: ELF not found or invalid.")
+                self.log_thread_safe(f"\nPhase 2: Extracting hidden game data (WADs)...")
                 
-            self.root.after(0, messagebox.showinfo, "Success", "Extraction complete!")
+                raw_out_path = self.out_path / "raw_wads"
+                raw_out_path.mkdir(parents=True, exist_ok=True)
+                
+                self.log_thread_safe(f"Warning: ELF TOC mapping identified minor localized chunks. Starting full heuristics scan...")
+                
+                blocks = raw_extract.scan_disc_for_blocks(self.iso_path, verbose=False)
+                
+                if not blocks:
+                    self.log_thread_safe("WARNING: Could not find massive data blocks on disc!")
+                else:
+                    self.log_thread_safe(f"Found {len(blocks)} massive game data block(s). Extracting...")
+                    named = raw_extract.blocks_to_names(blocks, label="raw_wad")
+                    
+                    ok = 0
+                    total_written = 0
+                    for lba, sz, name in named:
+                        try:
+                            written = raw_extract.extract_block(self.iso_path, lba, sz, raw_out_path / name)
+                            total_written += written
+                            ok += 1
+                            self.log_thread_safe(f"  Extracted {name} ({written / 1024 / 1024:.2f} MB)")
+                        except Exception as e:
+                            self.log_thread_safe(f"  Failed: {name} - {e}")
+                            
+                    self.log_thread_safe(f"\nRaw Extraction Complete! Wrote {ok} files, {total_written / 1024 / 1024:.2f} MB to {raw_out_path.name}")
+                
+            else:
+                self.log_thread_safe(f"WARNING: ELF not found or invalid. Cannot extract WAD files.")
+                
+            self.root.after(0, messagebox.showinfo, "Success", "Full Extraction complete!")
         except Exception as e:
             self.log_thread_safe(f"Error: {e}")
             self.root.after(0, messagebox.showerror, "Error", f"Extraction failed: {e}")
