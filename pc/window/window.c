@@ -9,22 +9,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "src/engine/ui/dashboard.h"
 
 #ifdef TARGET_PC
 
-/* #include <SDL2/SDL.h>        -- Enabled once SDL2 is configured */
-/* #include <SDL2/SDL_opengl.h> -- Enabled once SDL2/GL is configured */
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
 
 /* ── Internal State ─────────────────────────────────────────────────────────── */
 
 typedef struct WindowState {
-    /* SDL_Window   *window;    -- SDL2 window handle */
-    /* SDL_GLContext gl_ctx;    -- OpenGL context */
+    SDL_Window   *window;
+    SDL_GLContext gl_ctx;
     int    width;
     int    height;
     int    running;
     float  delta_time;
-    /* Uint32 last_frame_ticks; -- SDL tick count at start of last frame */
+    Uint32 last_frame_ticks;
 } WindowState;
 
 static WindowState g_window = {0};
@@ -39,41 +40,37 @@ int window_init(int scale) {
     printf("[WINDOW] Initializing %dx%d window (scale %dx)\n",
            g_window.width, g_window.height, scale);
 
-    /*
-     * TODO: SDL2 initialization sequence:
-     *
-     * if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
-     *     fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
-     *     return -1;
-     * }
-     *
-     * // Request OpenGL 4.6 Core Profile
-     * SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-     * SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-     * SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-     * SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-     * SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-     *
-     * g_window.window = SDL_CreateWindow(
-     *     RAC_WINDOW_TITLE,
-     *     SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-     *     g_window.width, g_window.height,
-     *     SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
-     * );
-     * if (!g_window.window) {
-     *     fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
-     *     return -1;
-     * }
-     *
-     * g_window.gl_ctx = SDL_GL_CreateContext(g_window.window);
-     * if (!g_window.gl_ctx) {
-     *     fprintf(stderr, "SDL_GL_CreateContext failed: %s\n", SDL_GetError());
-     *     return -1;
-     * }
-     *
-     * // Enable vsync
-     * SDL_GL_SetSwapInterval(1);
-     */
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
+        fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+        return -1;
+    }
+
+    /* Request OpenGL 4.6 Core Profile */
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
+    g_window.window = SDL_CreateWindow(
+        RAC_WINDOW_TITLE,
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        g_window.width, g_window.height,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
+    );
+    if (!g_window.window) {
+        fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
+        return -1;
+    }
+
+    g_window.gl_ctx = SDL_GL_CreateContext(g_window.window);
+    if (!g_window.gl_ctx) {
+        fprintf(stderr, "SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+        return -1;
+    }
+
+    /* Enable vsync */
+    SDL_GL_SetSwapInterval(1);
 
     /* Initialize all HAL systems */
     gs_hal_init((u32)g_window.width, (u32)g_window.height);
@@ -95,12 +92,9 @@ void window_shutdown(void) {
     pad_hal_shutdown();
     gs_hal_shutdown();
 
-    /*
-     * TODO:
-     * SDL_GL_DeleteContext(g_window.gl_ctx);
-     * SDL_DestroyWindow(g_window.window);
-     * SDL_Quit();
-     */
+    SDL_GL_DeleteContext(g_window.gl_ctx);
+    SDL_DestroyWindow(g_window.window);
+    SDL_Quit();
 
     memset(&g_window, 0, sizeof(g_window));
     printf("[WINDOW] Shutdown complete\n");
@@ -111,56 +105,50 @@ void window_run(void) {
 
     /* Call game initialization */
     GameInit();
+    dashboard_init();
 
     while (g_window.running) {
-        /*
-         * TODO: Frame timing:
-         * Uint32 frame_start = SDL_GetTicks();
-         */
+        Uint32 frame_start = SDL_GetTicks();
 
         /* ── Event pump ─────────────────────────────────────────────────── */
-        /*
-         * TODO:
-         * SDL_Event event;
-         * while (SDL_PollEvent(&event)) {
-         *     if (event.type == SDL_QUIT) {
-         *         window_request_quit();
-         *     }
-         *     if (event.type == SDL_KEYDOWN) {
-         *         if (event.key.keysym.sym == SDLK_ESCAPE) {
-         *             window_request_quit();
-         *         }
-         *         if (event.key.keysym.sym == SDLK_F11) {
-         *             // Toggle fullscreen
-         *             SDL_SetWindowFullscreen(g_window.window,
-         *                 SDL_GetWindowFlags(g_window.window) & SDL_WINDOW_FULLSCREEN_DESKTOP
-         *                 ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
-         *         }
-         *     }
-         * }
-         */
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                window_request_quit();
+            }
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE) {
+                    window_request_quit();
+                }
+                if (event.key.keysym.sym == SDLK_F11) {
+                    /* Toggle fullscreen */
+                    SDL_SetWindowFullscreen(g_window.window,
+                        SDL_GetWindowFlags(g_window.window) & SDL_WINDOW_FULLSCREEN_DESKTOP
+                        ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                }
+            }
+        }
 
         /* ── Update ─────────────────────────────────────────────────────── */
         pad_hal_update();
+        dashboard_update();
         GameUpdate();
 
         /* ── Render ─────────────────────────────────────────────────────── */
         gs_hal_begin_frame();
+        
         GameRender();
+        dashboard_render();
+        
+        SDL_GL_SwapWindow(g_window.window);
         gs_hal_end_frame();
 
-        /*
-         * TODO: Frame rate cap:
-         * Uint32 frame_time = SDL_GetTicks() - frame_start;
-         * if (frame_time < RAC_FRAME_TIME_MS) {
-         *     SDL_Delay(RAC_FRAME_TIME_MS - frame_time);
-         * }
-         * g_window.delta_time = (SDL_GetTicks() - frame_start) / 1000.0f;
-         */
-
-        /* Stub: break immediately since game functions aren't implemented yet */
-        printf("[WINDOW] Frame executed (stub — exiting immediately)\n");
-        g_window.running = 0;
+        /* ── Frame rate cap ─────────────────────────────────────────────── */
+        Uint32 frame_time = SDL_GetTicks() - frame_start;
+        if (frame_time < RAC_FRAME_TIME_MS) {
+            SDL_Delay(RAC_FRAME_TIME_MS - frame_time);
+        }
+        g_window.delta_time = (SDL_GetTicks() - frame_start) / 1000.0f;
     }
 
     GameShutdown();
@@ -210,7 +198,12 @@ void GameInit(void) {
 }
 
 void GameUpdate(void) {
-    /* Stub: nothing to update yet */
+    /* Proof of Concept: Print controller state if any buttons are pressed */
+    const PadData *pad = pad_hal_get_data(0);
+    if (pad && pad->buttons != 0xFFFF) {
+        printf("[GAME] Buttons Pressed: 0x%04X (LX: %d, LY: %d)\n", 
+               (u16)~pad->buttons, pad->lx, pad->ly);
+    }
 }
 
 void GameRender(void) {

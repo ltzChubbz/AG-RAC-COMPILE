@@ -13,6 +13,7 @@ message(STATUS "AG-RAC build target: ${BUILD_TARGET}")
 # ─── Source files (shared between both targets) ────────────────────────────────
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
     "src/engine/*.c"
+    "src/engine/*.h"
 )
 file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS
     "src/game/*.c"
@@ -75,6 +76,19 @@ if(BUILD_TARGET STREQUAL "mips")
                     "$<TARGET_FILE:rac_mips>"
             COMMENT "Verifying compiled output matches original ELF"
         )
+        
+        # New target for visually diffing assembly blocks!
+        add_custom_target(decomp_diff
+            COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_SOURCE_DIR}/tools/decomp_verify/diff.py"
+                "${ORIGINAL_ELF}"
+                # Defaults to beginning of text section, user will edit these values over time as they diff specific functions
+                "0x100000" "0x100100" 
+                "$<TARGET_FILE:rac_mips>"
+            COMMENT "Diffing MIPS object assembly against original SCUS_971.99"
+            DEPENDS rac_mips
+            VERBATIM
+        )
     else()
         message(WARNING "ORIGINAL_ELF not found at '${ORIGINAL_ELF}'. SHA1 verification disabled.")
         message(WARNING "Run 'python tools/iso_extract/iso_extract.py' first to extract your ISO.")
@@ -87,8 +101,10 @@ elseif(BUILD_TARGET STREQUAL "pc")
     set(CMAKE_C_STANDARD 11)
     set(CMAKE_C_STANDARD_REQUIRED ON)
 
-    # PC HAL source files
-    file(GLOB_RECURSE HAL_SOURCES CONFIGURE_DEPENDS "pc/hal/*.c")
+    file(GLOB_RECURSE HAL_SOURCES CONFIGURE_DEPENDS 
+        "pc/hal/*.c"
+        "pc/hal/*.h"
+    )
     file(GLOB_RECURSE WINDOW_SOURCES CONFIGURE_DEPENDS "pc/window/*.c")
 
     set(PC_SRC
@@ -122,10 +138,10 @@ elseif(BUILD_TARGET STREQUAL "pc")
         set(CMAKE_WARN_DEPRECATED ${OLD_WARN_DEPRECATED})
         
         # FetchContent exposes SDL2::SDL2 as a target directly
-        target_link_libraries(rac_pc PRIVATE SDL2::SDL2)
+        target_link_libraries(rac_pc PRIVATE SDL2::SDL2 SDL2::SDL2main)
     else()
         target_include_directories(rac_pc PRIVATE ${SDL2_INCLUDE_DIRS})
-        target_link_libraries(rac_pc PRIVATE ${SDL2_LIBRARIES})
+        target_link_libraries(rac_pc PRIVATE ${SDL2_LIBRARIES} SDL2::SDL2main)
     endif()
 
     # ── OpenGL ────────────────────────────────────────────────────────────────

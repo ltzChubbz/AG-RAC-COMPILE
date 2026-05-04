@@ -1,0 +1,43 @@
+/**
+ * gl_loader.c — Implementation of the minimal OpenGL loader.
+ */
+
+#include "gl_loader.h"
+#include <SDL2/SDL.h>
+
+PFNGLGENBUFFERSPROC glGenBuffers = NULL;
+PFNGLBINDBUFFERPROC glBindBuffer = NULL;
+PFNGLBUFFERDATAPROC glBufferData = NULL;
+PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = NULL;
+PFNGLBINDVERTEXARRAYPROC glBindVertexArray = NULL;
+PFNGLCREATESHADERPROC glCreateShader = NULL;
+PFNGLSHADERSOURCEPROC glShaderSource = NULL;
+PFNGLCOMPILESHADERPROC glCompileShader = NULL;
+PFNGLCREATEPROGRAMPROC glCreateProgram = NULL;
+PFNGLATTACHSHADERPROC glAttachShader = NULL;
+PFNGLLINKPROGRAMPROC glLinkProgram = NULL;
+PFNGLUSEPROGRAMPROC glUseProgram = NULL;
+PFNGLGETSHADERIVPROC glGetShaderIV = NULL;
+PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog = NULL;
+
+#define LOAD_GL(name, type) \
+    name = (type)SDL_GL_GetProcAddress(#name); \
+    if (!name) return -1;
+
+int gl_loader_init(void) {
+    LOAD_GL(glGenBuffers, PFNGLGENBUFFERSPROC);
+    LOAD_GL(glBindBuffer, PFNGLBINDBUFFERPROC);
+    LOAD_GL(glBufferData, PFNGLBUFFERDATAPROC);
+    LOAD_GL(glGenVertexArrays, PFNGLGENVERTEXARRAYSPROC);
+    LOAD_GL(glBindVertexArray, PFNGLBINDVERTEXARRAYPROC);
+    LOAD_GL(glCreateShader, PFNGLCREATESHADERPROC);
+    LOAD_GL(glShaderSource, PFNGLSHADERSOURCEPROC);
+    LOAD_GL(glCompileShader, PFNGLCOMPILESHADERPROC);
+    LOAD_GL(glCreateProgram, PFNGLCREATEPROGRAMPROC);
+    LOAD_GL(glAttachShader, PFNGLATTACHSHADERPROC);
+    LOAD_GL(glLinkProgram, PFNGLLINKPROGRAMPROC);
+    LOAD_GL(glUseProgram, PFNGLUSEPROGRAMPROC);
+    LOAD_GL(glGetShaderIV, PFNGLGETSHADERIVPROC);
+    LOAD_GL(glGetShaderInfoLog, PFNGLGETSHADERINFOLOGPROC);
+    return 0;
+}

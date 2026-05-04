@@ -10,7 +10,7 @@
 
 #ifdef TARGET_PC
 
-/* #include <SDL2/SDL.h>  -- Enabled once SDL2 is configured */
+#include <SDL2/SDL.h>
 
 /* ── Internal State ─────────────────────────────────────────────────────────── */
 
@@ -19,7 +19,7 @@
 typedef struct PadHalState {
     PadData current[MAX_PORTS];
     PadData previous[MAX_PORTS];
-    int     sdl_joy_index[MAX_PORTS];  /* SDL2 joystick index, -1 if disconnected */
+    SDL_GameController *controllers[MAX_PORTS];
     int     initialized;
 } PadHalState;
 
@@ -46,7 +46,7 @@ static u8 axis_to_ps2(int sdl_axis_value) {
 void pad_hal_init(void) {
     memset(&g_pad, 0, sizeof(g_pad));
     for (int i = 0; i < MAX_PORTS; i++) {
-        g_pad.sdl_joy_index[i] = -1;
+        g_pad.controllers[i] = NULL;
         /* Start with all buttons "not pressed" (active-low → all 1s) */
         g_pad.current[i].buttons  = 0xFFFF;
         g_pad.previous[i].buttons = 0xFFFF;
@@ -55,64 +55,91 @@ void pad_hal_init(void) {
         g_pad.current[i].lx = g_pad.current[i].ly = 128;
         g_pad.current[i].rx = g_pad.current[i].ry = 128;
     }
-    g_pad.initialized = 1;
+    
+    int joystick_count = SDL_NumJoysticks();
+    printf("[PAD-HAL] SDL reports %d joystick(s) connected\n", joystick_count);
 
-    /*
-     * TODO: SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
-     *       Open available game controllers, assign to ports.
-     */
-    printf("[PAD-HAL] Initialized (stub)\n");
+    int port = 0;
+    for (int i = 0; i < joystick_count && port < MAX_PORTS; i++) {
+        const char *name = SDL_JoystickNameForIndex(i);
+        int is_controller = SDL_IsGameController(i);
+        printf("[PAD-HAL]  - Joystick %d: '%s' (is_controller: %s)\n", 
+               i, name ? name : "Unknown", is_controller ? "YES" : "NO");
+
+        if (is_controller) {
+            g_pad.controllers[port] = SDL_GameControllerOpen(i);
+            if (g_pad.controllers[port]) {
+                printf("[PAD-HAL]    Mapped to Port %d\n", port + 1);
+                port++;
+            }
+        }
+    }
+
+    g_pad.initialized = 1;
+    printf("[PAD-HAL] Initialization complete\n");
 }
 
 void pad_hal_shutdown(void) {
     if (!g_pad.initialized) return;
-    /*
-     * TODO: SDL_GameControllerClose for all open controllers
-     */
+    for (int i = 0; i < MAX_PORTS; i++) {
+        if (g_pad.controllers[i]) {
+            SDL_GameControllerClose(g_pad.controllers[i]);
+            g_pad.controllers[i] = NULL;
+        }
+    }
     memset(&g_pad, 0, sizeof(g_pad));
 }
 
 void pad_hal_update(void) {
-    /*
-     * TODO: For each SDL2 GameController:
-     *
-     * 1. Save previous state:
-     *    memcpy(&g_pad.previous[port], &g_pad.current[port], sizeof(PadData));
-     *
-     * 2. Read SDL button states and map to PS2 bitmask (active-low):
-     *    u16 buttons = 0xFFFF;  // all not-pressed
-     *    if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_A))
-     *        buttons &= ~PAD_CROSS;   // Clear bit = pressed
-     *    if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_B))
-     *        buttons &= ~PAD_CIRCLE;
-     *    ... etc.
-     *    g_pad.current[port].buttons = buttons;
-     *
-     * 3. Read analog sticks:
-     *    g_pad.current[port].lx = axis_to_ps2(SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_LEFTX));
-     *    g_pad.current[port].ly = axis_to_ps2(SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_LEFTY));
-     *    g_pad.current[port].rx = axis_to_ps2(SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_RIGHTX));
-     *    g_pad.current[port].ry = axis_to_ps2(SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_RIGHTY));
-     *
-     * SDL controller → PS2 button mapping:
-     *   SDL A           → PAD_CROSS
-     *   SDL B           → PAD_CIRCLE
-     *   SDL X           → PAD_SQUARE
-     *   SDL Y           → PAD_TRIANGLE
-     *   SDL LEFT_SHOULDER  → PAD_L1
-     *   SDL RIGHT_SHOULDER → PAD_R1
-     *   SDL TRIGGERLEFT    → PAD_L2  (treat as digital button)
-     *   SDL TRIGGERRIGHT   → PAD_R2
-     *   SDL BACK        → PAD_SELECT
-     *   SDL START       → PAD_START
-     *   SDL GUIDE       → (menu)
-     *   SDL LEFTSTICK   → PAD_L3
-     *   SDL RIGHTSTICK  → PAD_R3
-     *   SDL DPAD_UP     → PAD_UP
-     *   SDL DPAD_DOWN   → PAD_DOWN
-     *   SDL DPAD_LEFT   → PAD_LEFT
-     *   SDL DPAD_RIGHT  → PAD_RIGHT
-     */
+    if (!g_pad.initialized) return;
+
+    for (int i = 0; i < MAX_PORTS; i++) {
+        SDL_GameController *ctrl = g_pad.controllers[i];
+        
+        /* Save previous state */
+        memcpy(&g_pad.previous[i], &g_pad.current[i], sizeof(PadData));
+        
+        if (!ctrl || !SDL_GameControllerGetAttached(ctrl)) {
+            /* Keep centered/unpressed if disconnected */
+            g_pad.current[i].buttons = 0xFFFF;
+            g_pad.current[i].lx = g_pad.current[i].ly = 128;
+            g_pad.current[i].rx = g_pad.current[i].ry = 128;
+            continue;
+        }
+
+        /* ── Buttons (PS2: Active-Low) ── */
+        u16 btn = 0xFFFF;
+        
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_UP))    btn &= ~PAD_UP;
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_DOWN))  btn &= ~PAD_DOWN;
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_LEFT))  btn &= ~PAD_LEFT;
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) btn &= ~PAD_RIGHT;
+        
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_A))          btn &= ~PAD_CROSS;
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_B))          btn &= ~PAD_CIRCLE;
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_X))          btn &= ~PAD_SQUARE;
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_Y))          btn &= ~PAD_TRIANGLE;
+        
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_LEFTSHOULDER))  btn &= ~PAD_L1;
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) btn &= ~PAD_R1;
+        
+        /* Triggers (Digital map) */
+        if (SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 16000)  btn &= ~PAD_L2;
+        if (SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 16000) btn &= ~PAD_R2;
+        
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_START))  btn &= ~PAD_START;
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_BACK))   btn &= ~PAD_SELECT;
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_LEFTSTICK))  btn &= ~PAD_L3;
+        if (SDL_GameControllerGetButton(ctrl, SDL_CONTROLLER_BUTTON_RIGHTSTICK)) btn &= ~PAD_R3;
+
+        g_pad.current[i].buttons = btn;
+
+        /* ── Analog Sticks ── */
+        g_pad.current[i].lx = axis_to_ps2(SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_LEFTX));
+        g_pad.current[i].ly = axis_to_ps2(SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_LEFTY));
+        g_pad.current[i].rx = axis_to_ps2(SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_RIGHTX));
+        g_pad.current[i].ry = axis_to_ps2(SDL_GameControllerGetAxis(ctrl, SDL_CONTROLLER_AXIS_RIGHTY));
+    }
 }
 
 const PadData *pad_hal_get_data(u32 port) {

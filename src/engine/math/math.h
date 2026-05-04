@@ -19,8 +19,8 @@
 #ifndef RAC_ENGINE_MATH_H
 #define RAC_ENGINE_MATH_H
 
-#include "../../include/types.h"
-#include "../../include/ps2_math.h"
+#include "types.h"
+#include "ps2_math.h"
 
 /* ── Scalar Math ───────────────────────────────────────────────────────────── */
 

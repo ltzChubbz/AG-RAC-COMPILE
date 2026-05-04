@@ -18,8 +18,7 @@
 #ifdef TARGET_PC
 
 /* Included via vcpkg or system OpenGL */
-/* #include <GL/gl.h>    -- Will be enabled once OpenGL deps are configured */
-/* #include <SDL2/SDL.h> -- Will be enabled once SDL2 deps are configured */
+#include "gl_loader.h"
 
 /* ── Internal State ─────────────────────────────────────────────────────────── */
 
@@ -47,19 +46,23 @@ void gs_hal_init(u32 width, u32 height) {
         return;
     }
 
+    /* Initialize GL function pointers */
+    if (gl_loader_init() != 0) {
+        fprintf(stderr, "[GS-HAL] ERROR: Failed to load OpenGL functions\n");
+        return;
+    }
+
     g_gs.render_width  = width;
     g_gs.render_height = height;
     g_gs.initialized   = 1;
 
-    /*
-     * TODO: Initialize OpenGL state:
-     *   glEnable(GL_DEPTH_TEST);
-     *   glDepthFunc(GL_LEQUAL);
-     *   glEnable(GL_BLEND);
-     *   glViewport(0, 0, width, height);
-     */
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glViewport(0, 0, width, height);
 
-    printf("[GS-HAL] Initialized — %ux%u (stub)\n", width, height);
+    printf("[GS-HAL] Initialized — %ux%u (OpenGL 4.6 Core)\n", width, height);
 }
 
 void gs_hal_shutdown(void) {
@@ -74,11 +77,9 @@ void gs_hal_shutdown(void) {
 }
 
 void gs_hal_begin_frame(void) {
-    /*
-     * TODO:
-     *   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-     *   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-     */
+    /* Clear to a pleasant "Ratchet & Clank" style background blue */
+    glClearColor(0.12f, 0.22f, 0.44f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void gs_hal_end_frame(void) {

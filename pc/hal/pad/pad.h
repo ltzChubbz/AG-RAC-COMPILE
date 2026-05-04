@@ -12,7 +12,7 @@
 #ifndef AG_RAC_HAL_PAD_H
 #define AG_RAC_HAL_PAD_H
 
-#include "../../include/types.h"
+#include "types.h"
 
 /* ── PS2 Button Bitmask (DUALSHOCK 2) ─────────────────────────────────────── */
 /* Bit = 0 means PRESSED (active-low, matching PS2 hardware) */

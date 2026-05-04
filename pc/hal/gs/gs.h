@@ -15,7 +15,7 @@
 #ifndef AG_RAC_HAL_GS_H
 #define AG_RAC_HAL_GS_H
 
-#include "../../include/types.h"
+#include "types.h"
 
 /* ── GS Privileged Register Addresses ─────────────────────────────────────── */
 /* On PS2 these are memory-mapped at 0x12000000. On PC they are structs. */

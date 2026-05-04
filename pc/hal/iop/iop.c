@@ -52,8 +52,16 @@ static void translate_path(const char *ps2_path, char *out, u32 out_size) {
     char *semicolon = strchr(filename_clean, ';');
     if (semicolon) *semicolon = '\0';
 
-    /* Build final path */
-    snprintf(out, out_size, "%s/%s", g_iop.assets_root, filename_clean);
+    /* Special case: If requesting a WAD, look in wads subfolder */
+    if (strstr(filename_clean, ".WAD") || strstr(filename_clean, ".bin")) {
+        snprintf(out, out_size, "%s/wads/%s", g_iop.assets_root, filename_clean);
+        
+        /* Fallback: If it's something like LEVEL01.WAD, and we have wad_001.bin, 
+           we could implement a mapping here. For now, we assume the game will 
+           be updated to use our specific naming or we rename the assets. */
+    } else {
+        snprintf(out, out_size, "%s/%s", g_iop.assets_root, filename_clean);
+    }
 }
 
 /* ── File I/O Implementation ─────────────────────────────────────────────────── */
