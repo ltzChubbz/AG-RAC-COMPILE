@@ -1,6 +1,6 @@
 #include "dashboard.h"
-#include "../../pc/hal/gs/gl_loader.h"
-#include "../../pc/hal/pad/pad.h"
+#include "pc/hal/gs/gl_loader.h"
+#include "pc/hal/pad/pad.h"
 #include <stdio.h>
 
 /* ── Shaders ────────────────────────────────────────────────────────────────── */
@@ -74,26 +74,46 @@ void dashboard_render(void) {
 
     /* ── Render Controller Visualization ── */
     /* Background rect */
-    draw_rect(verts, &v_idx, -0.4f, -0.4f, 0.8f, 0.4f, 0.2f, 0.2f, 0.25f);
+    draw_rect(verts, &v_idx, -0.6f, -0.4f, 1.2f, 0.5f, 0.2f, 0.2f, 0.25f);
+
+    /* 肩ボタン (Shoulders) */
+    draw_rect(verts, &v_idx, -0.55f, -0.35f, 0.15f, 0.05f, (b & PAD_L1) ? 0.9f : 0.4f, 0.4f, 0.4f);
+    draw_rect(verts, &v_idx, -0.55f, -0.30f, 0.15f, 0.05f, (b & PAD_L2) ? 0.9f : 0.4f, 0.4f, 0.4f);
+    draw_rect(verts, &v_idx, 0.4f,  -0.35f, 0.15f, 0.05f, (b & PAD_R1) ? 0.9f : 0.4f, 0.4f, 0.4f);
+    draw_rect(verts, &v_idx, 0.4f,  -0.30f, 0.15f, 0.05f, (b & PAD_R2) ? 0.9f : 0.4f, 0.4f, 0.4f);
 
     /* DPAD */
-    draw_rect(verts, &v_idx, -0.3f, -0.5f, 0.05f, 0.05f, (b & PAD_UP)   ? 0.9f : 0.4f, 0.4f, 0.4f);
-    draw_rect(verts, &v_idx, -0.3f, -0.6f, 0.05f, 0.05f, (b & PAD_DOWN) ? 0.9f : 0.4f, 0.4f, 0.4f);
-    draw_rect(verts, &v_idx, -0.35f,-0.55f, 0.05f, 0.05f,(b & PAD_LEFT) ? 0.9f : 0.4f, 0.4f, 0.4f);
-    draw_rect(verts, &v_idx, -0.25f,-0.55f, 0.05f, 0.05f,(b & PAD_RIGHT)? 0.9f : 0.4f, 0.4f, 0.4f);
+    draw_rect(verts, &v_idx, -0.45f, -0.5f, 0.05f, 0.05f, (b & PAD_UP)   ? 0.9f : 0.4f, 0.4f, 0.4f);
+    draw_rect(verts, &v_idx, -0.45f, -0.6f, 0.05f, 0.05f, (b & PAD_DOWN) ? 0.9f : 0.4f, 0.4f, 0.4f);
+    draw_rect(verts, &v_idx, -0.5f,  -0.55f, 0.05f, 0.05f,(b & PAD_LEFT) ? 0.9f : 0.4f, 0.4f, 0.4f);
+    draw_rect(verts, &v_idx, -0.4f,  -0.55f, 0.05f, 0.05f,(b & PAD_RIGHT)? 0.9f : 0.4f, 0.4f, 0.4f);
 
     /* Face Buttons */
-    draw_rect(verts, &v_idx, 0.25f, -0.5f, 0.05f, 0.05f, (b & PAD_TRIANGLE) ? 0.2f : 0.4f, 0.9f, 0.2f);
-    draw_rect(verts, &v_idx, 0.25f, -0.6f, 0.05f, 0.05f, (b & PAD_CROSS)    ? 0.2f : 0.4f, 0.2f, 0.9f);
-    draw_rect(verts, &v_idx, 0.2f,  -0.55f, 0.05f, 0.05f,(b & PAD_SQUARE)   ? 0.9f : 0.4f, 0.2f, 0.9f);
-    draw_rect(verts, &v_idx, 0.3f,  -0.55f, 0.05f, 0.05f,(b & PAD_CIRCLE)   ? 0.9f : 0.2f, 0.2f, 0.2f);
+    f32 t_r = (b & PAD_TRIANGLE) ? 0.2f : 0.4f, t_g = (b & PAD_TRIANGLE) ? 0.9f : 0.4f, t_b = (b & PAD_TRIANGLE) ? 0.2f : 0.4f;
+    f32 c_r = (b & PAD_CROSS)    ? 0.2f : 0.4f, c_g = (b & PAD_CROSS)    ? 0.2f : 0.4f, c_b = (b & PAD_CROSS)    ? 0.9f : 0.4f;
+    f32 s_r = (b & PAD_SQUARE)   ? 0.9f : 0.4f, s_g = (b & PAD_SQUARE)   ? 0.2f : 0.4f, s_b = (b & PAD_SQUARE)   ? 0.9f : 0.4f;
+    f32 o_r = (b & PAD_CIRCLE)   ? 0.9f : 0.4f, o_g = (b & PAD_CIRCLE)   ? 0.2f : 0.4f, o_b = (b & PAD_CIRCLE)   ? 0.2f : 0.4f;
+
+    draw_rect(verts, &v_idx, 0.4f, -0.5f, 0.05f, 0.05f, t_r, t_g, t_b);
+    draw_rect(verts, &v_idx, 0.4f, -0.6f, 0.05f, 0.05f, c_r, c_g, c_b);
+    draw_rect(verts, &v_idx, 0.35f,-0.55f, 0.05f, 0.05f, s_r, s_g, s_b);
+    draw_rect(verts, &v_idx, 0.45f,-0.55f, 0.05f, 0.05f, o_r, o_g, o_b);
+
+    /* Select / Start */
+    draw_rect(verts, &v_idx, -0.1f, -0.55f, 0.05f, 0.03f, (b & PAD_SELECT) ? 0.9f : 0.4f, 0.4f, 0.4f);
+    draw_rect(verts, &v_idx, 0.05f, -0.55f, 0.05f, 0.03f, (b & PAD_START)  ? 0.9f : 0.4f, 0.4f, 0.4f);
 
     /* Analog Sticks (Visual indicator) */
     f32 lx = pad ? (pad->lx - 128) / 128.0f * 0.1f : 0;
     f32 ly = pad ? (128 - pad->ly) / 128.0f * 0.1f : 0;
-    draw_rect(verts, &v_idx, -0.15f + lx, -0.65f + ly, 0.04f, 0.04f, 0.8f, 0.8f, 0.8f);
+    draw_rect(verts, &v_idx, -0.25f + lx, -0.7f + ly, 0.06f, 0.06f, 0.8f, 0.8f, 0.8f);
+
+    f32 rx = pad ? (pad->rx - 128) / 128.0f * 0.1f : 0;
+    f32 ry = pad ? (128 - pad->ry) / 128.0f * 0.1f : 0;
+    draw_rect(verts, &v_idx, 0.2f + rx, -0.7f + ry, 0.06f, 0.06f, 0.8f, 0.8f, 0.8f);
 
     /* Render */
+    glDisable(GL_DEPTH_TEST);
     glUseProgram(g_program);
     glBindVertexArray(g_vao);
     glBindBuffer(GL_ARRAY_BUFFER, g_vbo);

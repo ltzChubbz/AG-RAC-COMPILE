@@ -14,6 +14,9 @@ message(STATUS "AG-RAC build target: ${BUILD_TARGET}")
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
     "src/engine/*.c"
     "src/engine/*.h"
+    "src/renderer/*.c"
+    "src/renderer/*.h"
+    "src/renderer/vif.c"
 )
 file(GLOB_RECURSE GAME_SOURCES CONFIGURE_DEPENDS
     "src/game/*.c"
@@ -34,6 +37,7 @@ set(GAME_SRC
 
 # ─── Include paths ─────────────────────────────────────────────────────────────
 include_directories(include)
+include_directories(src)
 
 # ─── MIPS target — matching decompilation build ────────────────────────────────
 if(BUILD_TARGET STREQUAL "mips")
@@ -115,7 +119,12 @@ elseif(BUILD_TARGET STREQUAL "pc")
 
     add_executable(rac_pc ${PC_SRC})
     target_compile_definitions(rac_pc PRIVATE TARGET_PC=1)
-    target_include_directories(rac_pc PRIVATE pc)
+    target_include_directories(rac_pc PRIVATE 
+        "."
+        "include"                 # Global types.h etc
+        "src/engine"
+        "pc"
+    )
 
     # ── SDL2 ──────────────────────────────────────────────────────────────────
     # Try a local install first; fall back to FetchContent if not found.

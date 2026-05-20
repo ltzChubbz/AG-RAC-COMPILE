@@ -1,217 +1,204 @@
-/**
- * window.c — PC Window and Main Loop Implementation (stub)
- *
- * SDL2 window creation, OpenGL context setup, and main game loop.
- * This is the true entry point (main()) for the PC build.
- */
+#include <SDL.h>
+#include <math.h>
+#include <stdio.h>
 
 #include "window.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "pc/hal/pad/pad.h"
+#include "pc/hal/gs/gs.h"
+#include "pc/hal/gs/gl_loader.h"
 #include "src/engine/ui/dashboard.h"
+#include "src/engine/wad.h"
+#include "src/renderer/mesh.h"
+#include "src/renderer/tex.h"
+#include "src/engine/math/math.h"
 
 #ifdef TARGET_PC
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
-
-/* ── Internal State ─────────────────────────────────────────────────────────── */
-
 typedef struct WindowState {
     SDL_Window   *window;
-    SDL_GLContext gl_ctx;
-    int    width;
-    int    height;
-    int    running;
-    float  delta_time;
-    Uint32 last_frame_ticks;
+    SDL_GLContext context;
+    int           running;
+    float         delta_time;
+    
+    /* Camera */
+    float cam_x, cam_y, cam_z;
+    float cam_yaw, cam_pitch;
+    int   wireframe;
+    
+    int     mesh_idx;
+    WadFile *wad;
+    PcMesh  *mesh;
+    u32     tex_id;
 } WindowState;
 
 static WindowState g_window = {0};
 
-/* ── Public API ──────────────────────────────────────────────────────────────── */
+/* Analog Deadzone Helper (±15-20 units) to stop camera wandering */
+static float apply_deadzone(u8 val, u8 center, u8 deadzone) {
+    int diff = (int)val - (int)center;
+    if (diff < -deadzone) return (diff + deadzone) / (float)(center - deadzone);
+    if (diff >  deadzone) return (diff - deadzone) / (float)(255 - center - deadzone);
+    return 0.0f;
+}
 
 int window_init(int scale) {
-    g_window.width  = RAC_NATIVE_WIDTH  * scale;
-    g_window.height = RAC_NATIVE_HEIGHT * scale;
-    g_window.running = 1;
-
-    printf("[WINDOW] Initializing %dx%d window (scale %dx)\n",
-           g_window.width, g_window.height, scale);
-
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
-        fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+    (void)scale;
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER) < 0) {
+        printf("[WINDOW] SDL init failed: %s\n", SDL_GetError());
         return -1;
     }
 
-    /* Request OpenGL 4.6 Core Profile */
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-
-    g_window.window = SDL_CreateWindow(
-        RAC_WINDOW_TITLE,
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        g_window.width, g_window.height,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
-    );
-    if (!g_window.window) {
-        fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
-        return -1;
-    }
-
-    g_window.gl_ctx = SDL_GL_CreateContext(g_window.window);
-    if (!g_window.gl_ctx) {
-        fprintf(stderr, "SDL_GL_CreateContext failed: %s\n", SDL_GetError());
-        return -1;
-    }
-
-    /* Enable vsync */
-    SDL_GL_SetSwapInterval(1);
-
-    /* Initialize all HAL systems */
-    gs_hal_init((u32)g_window.width, (u32)g_window.height);
+    g_window.window = SDL_CreateWindow("AG-RAC - Ratchet & Clank", 
+                                      SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                      1536, 1344, SDL_WINDOW_OPENGL);
+    
+    g_window.context = SDL_GL_CreateContext(g_window.window);
+    gl_loader_init();
     pad_hal_init();
-
-    /* Use the ASSETS_PATH define from CMake */
-#ifdef ASSETS_PATH
-    iop_hal_init(ASSETS_PATH);
-#else
-    iop_hal_init("assets");
-#endif
-
-    printf("[WINDOW] Initialization complete (stub)\n");
-    return 0;
-}
-
-void window_shutdown(void) {
-    iop_hal_shutdown();
-    pad_hal_shutdown();
-    gs_hal_shutdown();
-
-    SDL_GL_DeleteContext(g_window.gl_ctx);
-    SDL_DestroyWindow(g_window.window);
-    SDL_Quit();
-
-    memset(&g_window, 0, sizeof(g_window));
-    printf("[WINDOW] Shutdown complete\n");
-}
-
-void window_run(void) {
-    printf("[WINDOW] Starting main loop\n");
-
-    /* Call game initialization */
-    GameInit();
+    
     dashboard_init();
-
-    while (g_window.running) {
-        Uint32 frame_start = SDL_GetTicks();
-
-        /* ── Event pump ─────────────────────────────────────────────────── */
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
-                window_request_quit();
-            }
-            if (event.type == SDL_KEYDOWN) {
-                if (event.key.keysym.sym == SDLK_ESCAPE) {
-                    window_request_quit();
-                }
-                if (event.key.keysym.sym == SDLK_F11) {
-                    /* Toggle fullscreen */
-                    SDL_SetWindowFullscreen(g_window.window,
-                        SDL_GetWindowFlags(g_window.window) & SDL_WINDOW_FULLSCREEN_DESKTOP
-                        ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
-                }
-            }
-        }
-
-        /* ── Update ─────────────────────────────────────────────────────── */
-        pad_hal_update();
-        dashboard_update();
-        GameUpdate();
-
-        /* ── Render ─────────────────────────────────────────────────────── */
-        gs_hal_begin_frame();
+    g_window.running = 1;
+    g_window.cam_x = 0; g_window.cam_y = 0; g_window.cam_z = -10.0f;
+    g_window.wireframe = 0;
+    
+    /* Load default level assets (Veldin Planet 0) */
+    g_window.wad = wad_load("assets/wads/wad_106.bin");
+    if (g_window.wad && g_window.wad->chunk_count > 1000) {
+        g_window.mesh_idx = 1003; /* Reset to confirmed high-density sector */
+        g_window.mesh = mesh_from_chunk(&g_window.wad->chunks[g_window.mesh_idx], g_window.wad->data);
         
-        GameRender();
-        dashboard_render();
-        
-        SDL_GL_SwapWindow(g_window.window);
-        gs_hal_end_frame();
-
-        /* ── Frame rate cap ─────────────────────────────────────────────── */
-        Uint32 frame_time = SDL_GetTicks() - frame_start;
-        if (frame_time < RAC_FRAME_TIME_MS) {
-            SDL_Delay(RAC_FRAME_TIME_MS - frame_time);
-        }
-        g_window.delta_time = (SDL_GetTicks() - frame_start) / 1000.0f;
+        /* Apply the Veldin Palette + Texture found via Forensics */
+        const u8 *palette = &g_window.wad->data[0x42C400];
+        const u8 *pixels  = &g_window.wad->data[0x42CC00];
+        g_window.tex_id   = tex_from_wad(palette, pixels, 256, 256);
     }
-
-    GameShutdown();
-    printf("[WINDOW] Main loop exited\n");
+    return 0;
 }
 
 void window_request_quit(void) {
     g_window.running = 0;
 }
 
-float window_get_delta_time(void) {
-    return g_window.delta_time;
-}
+void window_run(void) {
+    printf("AG-RAC v21 HEARTBEAT\n");
+    u64 last_time = SDL_GetPerformanceCounter();
+    u64 freq = SDL_GetPerformanceFrequency();
 
-/* ── PC Entry Point ──────────────────────────────────────────────────────────── */
+    while (g_window.running) {
+        u64 now = SDL_GetPerformanceCounter();
+        g_window.delta_time = (float)(now - last_time) / freq;
+        if (g_window.delta_time > 0.1f) g_window.delta_time = 0.1f;
+        last_time = now;
 
-int main(int argc, char *argv[]) {
-    (void)argc; (void)argv;
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) window_request_quit();
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE) window_request_quit();
+            }
+        }
 
-    printf("\n");
-    printf("  AG-RAC — Ratchet & Clank Native PC Port\n");
-    printf("  =========================================\n");
-    printf("  Build: PC (Development stub)\n");
-    printf("\n");
+            /* ── Update ─────────────────────────────────────────────────────── */
+        pad_hal_update();
+        
+        const PadData *pad = pad_hal_get_data(0);
+        const PadData *prev = pad_hal_get_prev_data(0);
+        if (pad && prev) {
+            u16 b = ~pad->buttons;
+            u16 p = ~prev->buttons;
 
-    int scale = RAC_WINDOW_SCALE;
-    if (argc > 1) {
-        scale = atoi(argv[1]);
-        if (scale < 1 || scale > 8) scale = RAC_WINDOW_SCALE;
+            /* Turbo (R2) and Slow (L2) multipliers */
+            float speed_mult = 1.0f;
+            if (b & PAD_R2) speed_mult = 5.0f;
+            if (b & PAD_L2) speed_mult = 0.2f;
+            
+            float speed = 2.0f * speed_mult * g_window.delta_time;
+
+            /* Deadzoned Stick Reading (Prevents drifting) */
+            float rx = apply_deadzone(pad->rx, 128, 20);
+            float ry = apply_deadzone(pad->ry, 128, 20);
+            float lx = apply_deadzone(pad->lx, 128, 20);
+            float ly = apply_deadzone(pad->ly, 128, 20);
+
+            /* Mesh Browser (L1/R1) */
+            int next_idx = g_window.mesh_idx;
+            if ((b & PAD_R1) && !(p & PAD_R1)) next_idx++;
+            if ((b & PAD_L1) && !(p & PAD_L1)) next_idx--;
+            
+            if (next_idx != g_window.mesh_idx && g_window.wad) {
+                if (next_idx < 0) next_idx = 0;
+                if (next_idx >= (int)g_window.wad->chunk_count) next_idx = g_window.wad->chunk_count - 1;
+                
+                g_window.mesh_idx = next_idx;
+                printf("[CHUNK-BROWSER] Planet: Veldin | Sector: %d\n", g_window.mesh_idx);
+                /* Note: In a production build, we would free the old mesh here */
+                g_window.mesh = mesh_from_chunk(&g_window.wad->chunks[g_window.mesh_idx], g_window.wad->data);
+            }
+
+            /* L3 Reset shortcut */
+            if (b & PAD_L3) {
+                g_window.cam_x = 0; g_window.cam_y = 0; g_window.cam_z = -10;
+                g_window.cam_yaw = 0; g_window.cam_pitch = 0;
+            }
+
+            /* Camera Orientation Logic */
+            float sens = 2.0f * g_window.delta_time;
+            g_window.cam_yaw   += rx * sens;
+            g_window.cam_pitch += -ry * sens;
+
+            if (g_window.cam_pitch > 1.5f) g_window.cam_pitch = 1.5f;
+            if (g_window.cam_pitch < -1.5f) g_window.cam_pitch = -1.5f;
+
+            float fwd_x = sinf(g_window.cam_yaw) * cosf(g_window.cam_pitch);
+            float fwd_y = sinf(g_window.cam_pitch);
+            float fwd_z = -cosf(g_window.cam_yaw) * cosf(g_window.cam_pitch);
+            
+            float right_x = cosf(g_window.cam_yaw);
+            float right_z = sinf(g_window.cam_yaw);
+
+            /* Fly movement aligned to look direction */
+            g_window.cam_x += (fwd_x * -ly + right_x * lx) * speed;
+            g_window.cam_y += fwd_y * -ly * speed;
+            g_window.cam_z += (fwd_z * -ly + right_z * lx) * speed;
+
+            /* Debug Toggles */
+            if ((b & PAD_TRIANGLE) && !(p & PAD_TRIANGLE)) {
+                g_window.wireframe = !g_window.wireframe;
+            }
+        }
+
+        GameUpdate();
+
+        /* ── Render ─────────────────────────────────────────────────────── */
+        glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        GameRender();
+        
+        if (g_window.mesh) {
+            Vec3 cam_pos = { g_window.cam_x, g_window.cam_y, g_window.cam_z };
+            Mat4 viewM = Mat4ViewFPS(cam_pos, g_window.cam_yaw, g_window.cam_pitch);
+            
+            glPolygonMode(GL_FRONT_AND_BACK, g_window.wireframe ? GL_LINE : GL_FILL);
+            
+            /* Bind the current level texture */
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, g_window.tex_id);
+            
+            mesh_draw(g_window.mesh, &viewM.m[0][0], g_window.cam_x, g_window.cam_y, g_window.cam_z); 
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
+        
+        dashboard_render();
+        SDL_GL_SwapWindow(g_window.window);
     }
-
-    if (window_init(scale) != 0) {
-        fprintf(stderr, "[ERROR] window_init failed\n");
-        return 1;
-    }
-
-    window_run();
-    window_shutdown();
-
-    return 0;
 }
 
-/* ── Stub game function implementations (until decomp provides real ones) ─── */
-
-void GameInit(void) {
-    printf("[GAME] GameInit() — stub\n");
+void window_shutdown(void) {
+    dashboard_shutdown();
+    SDL_GL_DeleteContext(g_window.context);
+    SDL_DestroyWindow(g_window.window);
+    SDL_Quit();
 }
 
-void GameUpdate(void) {
-    /* Proof of Concept: Print controller state if any buttons are pressed */
-    const PadData *pad = pad_hal_get_data(0);
-    if (pad && pad->buttons != 0xFFFF) {
-        printf("[GAME] Buttons Pressed: 0x%04X (LX: %d, LY: %d)\n", 
-               (u16)~pad->buttons, pad->lx, pad->ly);
-    }
-}
-
-void GameRender(void) {
-    /* Stub: nothing to render yet */
-}
-
-void GameShutdown(void) {
-    printf("[GAME] GameShutdown() — stub\n");
-}
-
-#endif /* TARGET_PC */
+#endif

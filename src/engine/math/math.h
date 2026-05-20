@@ -90,8 +90,22 @@ Mat4 Mat4FromEulerYXZ(f32 yaw, f32 pitch, f32 roll);
 Mat4 Mat4Translation(Vec3 t);
 
 /**
+ * Build a perspective projection matrix.
+ */
+Mat4 Mat4Perspective(f32 fov, f32 aspect, f32 near, f32 far);
+
+/**
+ * Build an FPS view matrix (World-to-Camera).
+ */
+Mat4 Mat4ViewFPS(Vec3 pos, f32 yaw, f32 pitch);
+
+/**
+ * Multiply two 4x4 matrices.
+ */
+Mat4 Mat4Multiply(Mat4 a, Mat4 b);
+
+/**
  * Build a scale matrix.
- * Address: TBD
  */
 Mat4 Mat4Scale(Vec3 s);
 
