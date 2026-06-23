@@ -19,13 +19,13 @@ To build this project, you **must supply your own legally obtained copy** of *Ra
 
 | Goal | Status |
 |------|--------|
-| ISO extraction tooling | 🟡 In Progress |
-| ELF analysis tooling | 🟡 In Progress |
-| Ghidra disassembly setup | 🔴 Planned |
-| Matching C decompilation | 🔴 Planned |
-| Asset pipeline (via Wrench) | 🔴 Planned |
-| PS2 Hardware Abstraction Layer | 🔴 Planned |
-| Native PC binary | 🔴 Planned |
+| ISO extraction tooling | 🟢 Completed |
+| ELF analysis tooling | 🟢 Completed |
+| Ghidra disassembly setup | 🟢 Completed |
+| Matching C decompilation | 🟡 In Progress |
+| Asset pipeline (Wrench & WAD Loader) | 🟡 In Progress |
+| PS2 Hardware Abstraction Layer | 🟡 In Progress |
+| Native PC binary | 🟡 In Progress |
 
 ---
 
@@ -116,7 +116,8 @@ AG-RAC-COMPILE/
 ├── tools/
 │   ├── iso_extract/        # Python: unpack ISO → ELF + data
 │   ├── elf_info/           # Python: parse ELF headers and symbols
-│   └── asset_extract/      # Python: wrench wrapper for assets
+│   ├── asset_extract/      # Python: extract, analyze WAD, search meshes & refs
+│   └── wad_viewer/         # Python: graphical WAD viewer tool
 │
 ├── asm/
 │   └── non_matchings/      # Functions not yet converted to C
