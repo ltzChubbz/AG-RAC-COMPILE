@@ -2,12 +2,15 @@
 #include <string.h>
 #include <stdio.h>
 
-u8* decompress_wad_block(u8* src, u8* dest, u32 dest_size, u32* out_size) {
+u8* decompress_wad_block(u8* src, u8* src_end, u8* dest, u32 dest_size, u32* out_size) {
     if (memcmp(src, "WAD", 3) != 0) return src + 1;
     
     u32 compressed_size = *(u32*)(src + 3);
     u8* ptr = src + 0x10;
     u8* end = src + 0x10 + compressed_size;
+    if (end > src_end || end < src) {
+        end = src_end;
+    }
     u8* begin = ptr;
     
     u32 written = 0;

@@ -32,6 +32,7 @@ u32 vif_parse_sector(const u8 *data, u32 size, VifVertex *out_verts, u32 max_ver
             if (v_type == 3 && d_type == 1) {
                 const s16 *raw = (const s16*)&data[data_ptr];
                 for (u32 i = 0; i < num && v_count < max_verts; i++) {
+                    if (data_ptr + i * 8 + 8 > size) break; // Bounds check
                     out_verts[v_count].x = raw[i*4 + 0];
                     out_verts[v_count].y = raw[i*4 + 1];
                     out_verts[v_count].z = raw[i*4 + 2];
@@ -43,6 +44,7 @@ u32 vif_parse_sector(const u8 *data, u32 size, VifVertex *out_verts, u32 max_ver
             else if (v_type == 1 && d_type == 1) {
                 const s16 *raw = (const s16*)&data[data_ptr];
                 for (u32 i = 0; i < num && uv_count < max_verts; i++) {
+                    if (data_ptr + i * 4 + 4 > size) break; // Bounds check
                     out_verts[uv_count].u = raw[i*2 + 0] / 4096.0f;
                     out_verts[uv_count].v = raw[i*2 + 1] / 4096.0f;
                     uv_count++;
@@ -68,6 +70,7 @@ u32 vif_parse_sector(const u8 *data, u32 size, VifVertex *out_verts, u32 max_ver
     for (u32 i = 0; i < 3 && i < v_count; i++) {
         printf("[VIF] Vert %u: X=%f Y=%f Z=%f\n", i, out_verts[i].x, out_verts[i].y, out_verts[i].z);
     }
+    fflush(stdout);
     
     return v_count;
 }

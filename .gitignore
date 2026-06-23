@@ -53,3 +53,22 @@ Thumbs.db
 
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
+
+# ─── MSVC builds ──────────────────────────────────────────────────────────────
+build_msvc/
+
+# ─── Temp test binaries and files ─────────────────────────────────────────────
+test_decomp.exe
+test_decomp.obj
+test_decomp.cpp
+run_log.txt
+
+# ─── Local brain and scratch files ────────────────────────────────────────────
+brain/
+scratch/
+scratch_*.py
+
+# ─── Reverse engineering multimedia outputs ────────────────────────────────────
+*.m2v
+*.mp4
+*.png

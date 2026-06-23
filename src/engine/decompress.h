@@ -11,6 +11,6 @@
  * @param out_size Pointer to store the number of bytes written.
  * @return Pointer to the next byte after the compressed block in src.
  */
-u8* decompress_wad_block(u8* src, u8* dest, u32 dest_size, u32* out_size);
+u8* decompress_wad_block(u8* src, u8* src_end, u8* dest, u32 dest_size, u32* out_size);
 
 #endif

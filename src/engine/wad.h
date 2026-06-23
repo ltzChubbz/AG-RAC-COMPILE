@@ -17,7 +17,9 @@ typedef struct WadFile {
     /* Decompressed Level Data */
     u8 *decompressed_data;
     u32 decompressed_size;
-    u32 core_header_offset; /* Offset to RacLevelDataHeader in decompressed_data */
+    u32 core_header_offset; /* Offset to LevelCoreHeader in decompressed_data */
+    u8 *core_data;          /* Decompressed core geometry data (excluding seed) */
+    u32 core_data_size;     /* Size of decompressed core geometry data */
 
     WadChunk *chunks;
     u32 chunk_count;

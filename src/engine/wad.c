@@ -62,44 +62,118 @@ WadFile* wad_load(const char *path) {
     for (u32 i = 0; i < size; i += 2048) {
         if (size - i >= 16 && memcmp(&wad->data[i], "WAD", 3) == 0) {
             u32 written = 0;
-            decompress_wad_block(&wad->data[i], wad->decompressed_data, wad->decompressed_size, &written);
+            decompress_wad_block(&wad->data[i], wad->data + size, wad->decompressed_data, wad->decompressed_size, &written);
             printf("[WAD] Decompressed block at 0x%X -> %u bytes (total: %u)\n", i, written, wad->decompressed_size + written);
             wad->decompressed_size += written;
             fflush(stdout);
         }
     }
 
-    /* Search for RacLevelDataHeader in the decompressed buffer */
+    /* Search for LevelCoreHeader in the decompressed buffer */
     wad->core_header_offset = 0xFFFFFFFF;
     for (u32 i = 0; i < wad->decompressed_size - 64; i++) {
         /* Signature: [gs_ram_count=32][gs_ram_offset=5040] */
         u32 count = *(u32*)&wad->decompressed_data[i];
         u32 offset = *(u32*)&wad->decompressed_data[i+4];
         if (count == 32 && offset == 5040) {
-            wad->core_header_offset = i;
+            u32 tfrags_off = *(u32*)&wad->decompressed_data[i+8];
+            u32 occlusion_off = *(u32*)&wad->decompressed_data[i+12];
+            u32 sky_off = *(u32*)&wad->decompressed_data[i+16];
+            u32 collision_off = *(u32*)&wad->decompressed_data[i+20];
             
-            /* Print discovered sub-offsets */
-            u32 ci_off = *(u32*)&wad->decompressed_data[i+0x10];
-            u32 ci_size = *(u32*)&wad->decompressed_data[i+0x14];
-            printf("[WAD] Found RacLevelDataHeader at 0x%X (core_index: 0x%X, size: 0x%X)\n", i, ci_off, ci_size);
-            fflush(stdout);
-            
-            /* If this looks like the dummy MIPS header, keep searching */
-            if (ci_off > 0x1000000) {
-                printf("[WAD] Skipping dummy header...\n");
-                wad->core_header_offset = 0xFFFFFFFF;
+            /* If this looks like the dummy MIPS header or has invalid sky offset, skip it */
+            if (sky_off > 0x1000000) {
                 continue;
             }
-            u32 ci_abs = i + ci_off;
-            if (ci_abs < wad->decompressed_size - 32) {
-                u32 tfrags_off = *(u32*)&wad->decompressed_data[ci_abs+8];
-                u32 sky_off = *(u32*)&wad->decompressed_data[ci_abs+16];
-                printf("[WAD] LevelCoreHeader at 0x%X (tfrags: 0x%X, sky: 0x%X)\n", ci_abs, tfrags_off, sky_off);
-                fflush(stdout);
-            }
+            
+            wad->core_header_offset = i;
+            printf("[WAD] Found LevelCoreHeader at 0x%X:\n", i);
+            printf("      gs_ram: count=%u, offset=0x%X\n", count, offset);
+            printf("      tfrags: offset=0x%X\n", tfrags_off);
+            printf("      occlusion: offset=0x%X\n", occlusion_off);
+            printf("      sky: offset=0x%X\n", sky_off);
+            printf("      collision: offset=0x%X\n", collision_off);
+            fflush(stdout);
             break;
         }
     }
+
+    /* Decompress embedded core_data WAD block */
+    wad->core_data = NULL;
+    wad->core_data_size = 0;
+    if (wad->core_header_offset != 0xFFFFFFFF) {
+        u32 embedded_wad_offset = 0;
+        for (u32 j = wad->core_header_offset + 0x10; j < wad->decompressed_size - 4; j++) {
+            if (memcmp(&wad->decompressed_data[j], "WAD", 3) == 0) {
+                embedded_wad_offset = j;
+                break;
+            }
+        }
+        
+        if (embedded_wad_offset != 0) {
+            u32 seed_size = embedded_wad_offset - wad->core_header_offset;
+            printf("[WAD] Found embedded core_data WAD block at 0x%X (seed size: %u bytes)\n", 
+                   embedded_wad_offset, seed_size);
+            fflush(stdout);
+            
+            // Allocate 8MB for decompressed core_data (including seed)
+            wad->core_data = malloc(8 * 1024 * 1024);
+            memcpy(wad->core_data, &wad->decompressed_data[wad->core_header_offset], seed_size);
+            
+            u32 core_data_decomp_size = 0;
+            decompress_wad_block(&wad->decompressed_data[embedded_wad_offset], 
+                                 &wad->decompressed_data[wad->decompressed_size], 
+                                 wad->core_data, 
+                                 seed_size, 
+                                 &core_data_decomp_size);
+            
+            wad->core_data_size = seed_size + core_data_decomp_size;
+            printf("[WAD] Decompressed embedded core_data -> %u bytes (total including seed: %u)\n", 
+                   core_data_decomp_size, wad->core_data_size);
+            fflush(stdout);
+        } else {
+            printf("[WAD] WARNING: Could not find embedded core_data WAD block inside Block B!\n");
+            fflush(stdout);
+        }
+    }
+
+    /* 
+     * Scan for Geometry Chunks (uncompressed VIF packets)
+     * R&C streams geometry directly from DVD without WAD compression.
+     */
+    u32 max_chunks = size / 2048 + 1;
+    wad->chunks = malloc(sizeof(WadChunk) * max_chunks);
+    wad->chunk_count = 0;
+    
+    for (u32 i = 0; i < size; i += 2048) {
+        if (size - i >= 16 && memcmp(&wad->data[i], "WAD", 3) == 0) {
+            continue; // Skip compressed blocks
+        }
+        
+        int is_geom = 0;
+        u32 scan_end = (i + 2048 <= size) ? 2048 : (size - i);
+        for (u32 j = 0; j < scan_end - 4; j += 4) {
+            u8 cmd = wad->data[i + j + 3];
+            u8 num = wad->data[i + j + 2];
+            if ((cmd & 0x60) == 0x60) {
+                u8 v_type = (cmd >> 2) & 0x03;
+                u8 d_type = cmd & 0x03;
+                if (v_type == 3 && d_type == 1 && num > 0 && num < 255) {
+                    is_geom = 1;
+                    break;
+                }
+            }
+        }
+        
+        if (is_geom) {
+            wad->chunks[wad->chunk_count].offset = i;
+            wad->chunks[wad->chunk_count].size = 2048;
+            memcpy(wad->chunks[wad->chunk_count].type, "GEOM", 4);
+            wad->chunk_count++;
+        }
+    }
+    
+    printf("[WAD] Found %u geometry chunks in %s\n", wad->chunk_count, actual_path);
 
     if (wad->core_header_offset == 0xFFFFFFFF) {
         printf("[WAD] WARNING: Could not find RacLevelDataHeader in decompressed stream!\n");
@@ -116,6 +190,7 @@ void wad_free(WadFile *wad) {
     if (!wad) return;
     if (wad->data) free(wad->data);
     if (wad->decompressed_data) free(wad->decompressed_data);
+    if (wad->core_data) free(wad->core_data);
     if (wad->chunks) free(wad->chunks);
     free(wad);
 }
