@@ -29,6 +29,10 @@ typedef struct WindowState {
     WadFile *wad;
     PcMesh  *mesh;
     u32     tex_id;
+    
+    /* Terrain Fragments */
+    PcMesh  **tfrag_meshes;
+    u32     tfrag_count;
 } WindowState;
 
 static WindowState g_window = {0};
@@ -63,14 +67,60 @@ int window_init(int scale) {
     
     /* Load default level assets (Veldin Planet 0) */
     g_window.wad = wad_load("assets/wads/wad_106.bin");
-    if (g_window.wad && g_window.wad->chunk_count > 1000) {
-        g_window.mesh_idx = 1003; /* Reset to confirmed high-density sector */
-        g_window.mesh = mesh_from_chunk(&g_window.wad->chunks[g_window.mesh_idx], g_window.wad->data);
+    if (g_window.wad) {
+        if (g_window.wad->chunk_count > 1000) {
+            g_window.mesh_idx = 1003; /* Reset to confirmed high-density sector */
+            g_window.mesh = mesh_from_chunk(&g_window.wad->chunks[g_window.mesh_idx], g_window.wad->data);
+            
+            /* Apply the Veldin Palette + Texture found via Forensics */
+            const u8 *palette = &g_window.wad->data[0x42C400];
+            const u8 *pixels  = &g_window.wad->data[0x42CC00];
+            g_window.tex_id   = tex_from_wad(palette, pixels, 256, 256);
+        }
         
-        /* Apply the Veldin Palette + Texture found via Forensics */
-        const u8 *palette = &g_window.wad->data[0x42C400];
-        const u8 *pixels  = &g_window.wad->data[0x42CC00];
-        g_window.tex_id   = tex_from_wad(palette, pixels, 256, 256);
+        /* Load TFrags if core data is decompressed successfully */
+        if (g_window.wad->core_data && g_window.wad->core_header_offset != 0xFFFFFFFF) {
+            u32 base = g_window.wad->core_header_offset;
+            u32 tfrags_off = *(u32*)&g_window.wad->decompressed_data[base + 8];
+            
+            printf("[WINDOW] Loading TFrags from core offset 0x%X...\n", tfrags_off);
+            fflush(stdout);
+            
+            typedef struct {
+                s32 table_offset;
+                s32 count;
+                f32 thingy;
+                u32 mysterious;
+            } TfragsHeader;
+            
+            typedef struct {
+                float bsphere[4];
+                s32 data_offset;
+                u16 lod2_ofs;
+                u16 shared_ofs;
+                u8 padding[40];
+            } TfragHeader;
+            
+            if (tfrags_off + sizeof(TfragsHeader) <= g_window.wad->core_data_size) {
+                TfragsHeader *tf_hdr = (TfragsHeader*)&g_window.wad->core_data[tfrags_off];
+                TfragHeader *tf_array = (TfragHeader*)((u8*)tf_hdr + tf_hdr->table_offset);
+                
+                g_window.tfrag_count = tf_hdr->count;
+                printf("[WINDOW] Found %u terrain fragments in core header\n", g_window.tfrag_count);
+                fflush(stdout);
+                
+                g_window.tfrag_meshes = calloc(g_window.tfrag_count, sizeof(PcMesh*));
+                for (u32 i = 0; i < g_window.tfrag_count; i++) {
+                    u32 data_off = tf_array[i].data_offset;
+                    u32 next_off = (i < g_window.tfrag_count - 1) ? tf_array[i+1].data_offset : g_window.wad->core_data_size;
+                    
+                    if (data_off < g_window.wad->core_data_size && next_off <= g_window.wad->core_data_size && next_off > data_off) {
+                        u32 size = next_off - data_off;
+                        g_window.tfrag_meshes[i] = mesh_from_tfrag(&g_window.wad->core_data[data_off], size);
+                    }
+                }
+            }
+        }
     }
     return 0;
 }
@@ -175,7 +225,7 @@ void window_run(void) {
         
         GameRender();
         
-        if (g_window.mesh) {
+        if (g_window.mesh || g_window.tfrag_meshes) {
             Vec3 cam_pos = { g_window.cam_x, g_window.cam_y, g_window.cam_z };
             Mat4 viewM = Mat4ViewFPS(cam_pos, g_window.cam_yaw, g_window.cam_pitch);
             
@@ -185,7 +235,18 @@ void window_run(void) {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, g_window.tex_id);
             
-            mesh_draw(g_window.mesh, &viewM.m[0][0], g_window.cam_x, g_window.cam_y, g_window.cam_z); 
+            if (g_window.mesh) {
+                mesh_draw(g_window.mesh, &viewM.m[0][0], g_window.cam_x, g_window.cam_y, g_window.cam_z); 
+            }
+            
+            if (g_window.tfrag_meshes) {
+                for (u32 i = 0; i < g_window.tfrag_count; i++) {
+                    if (g_window.tfrag_meshes[i]) {
+                        mesh_draw(g_window.tfrag_meshes[i], &viewM.m[0][0], g_window.cam_x, g_window.cam_y, g_window.cam_z);
+                    }
+                }
+            }
+            
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
         
@@ -196,6 +257,17 @@ void window_run(void) {
 
 void window_shutdown(void) {
     dashboard_shutdown();
+    if (g_window.tfrag_meshes) {
+        for (u32 i = 0; i < g_window.tfrag_count; i++) {
+            if (g_window.tfrag_meshes[i]) {
+                free(g_window.tfrag_meshes[i]);
+            }
+        }
+        free(g_window.tfrag_meshes);
+    }
+    if (g_window.wad) {
+        wad_free(g_window.wad);
+    }
     SDL_GL_DeleteContext(g_window.context);
     SDL_DestroyWindow(g_window.window);
     SDL_Quit();

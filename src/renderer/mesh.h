@@ -20,6 +20,11 @@ typedef struct PcMesh {
 PcMesh* mesh_from_chunk(const WadChunk *chunk, const u8 *wad_data);
 
 /**
+ * mesh_from_tfrag() — Create a GPU-ready mesh from a TFrag VIF payload.
+ */
+PcMesh* mesh_from_tfrag(const u8 *vif_data, u32 vif_size);
+
+/**
  * mesh_draw() — Render the mesh to the screen.
  */
 void mesh_draw(PcMesh *mesh, float *view_matrix, float cam_x, float cam_y, float cam_z);

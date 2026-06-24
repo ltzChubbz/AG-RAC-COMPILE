@@ -34,8 +34,7 @@ static const char *WORLD_FS =
     "uniform sampler2D uTex;\n"
     "out vec4 FragColor;\n"
     "void main() {\n"
-    "   // Diagnostic Neon Pink (Phase 20)\n"
-    "   FragColor = vec4(1.0, 0.0, 1.0, 1.0);\n"
+    "   FragColor = texture(uTex, vTex);\n"
     "}\n";
 
 static u32 g_world_program = 0;
@@ -93,7 +92,7 @@ PcMesh* mesh_from_chunk(const WadChunk *chunk, const u8 *wad_data) {
     }
 
     Vertex *verts = malloc(sizeof(Vertex) * count);
-    u16 *indices = malloc(sizeof(u16) * count * 2);
+    u16 *indices = malloc(sizeof(u16) * (count * 4 + 4));
     u32 idx_ptr = 0;
     
     for (u32 i = 0; i < count; i++) {
@@ -118,6 +117,76 @@ PcMesh* mesh_from_chunk(const WadChunk *chunk, const u8 *wad_data) {
     }
 
     glGenVertexArrays(1, &m->vao);
+    glGenVertexArrays(1, &m->vao);
+    glGenBuffers(1, &m->vbo);
+    glGenBuffers(1, &m->ebo);
+
+    glBindVertexArray(m->vao);
+    glBindBuffer(GL_ARRAY_BUFFER, m->vbo);
+    glBufferData(GL_ARRAY_BUFFER, count * sizeof(Vertex), verts, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m->ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, idx_ptr * sizeof(u16), indices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(f32)));
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(6 * sizeof(f32)));
+    glEnableVertexAttribArray(2);
+
+    m->vert_count = count;
+    m->index_count = idx_ptr;
+    m->initialized = 1;
+    
+    if (g_world_program == 0) {
+        g_world_program = compile_shader(WORLD_VS, WORLD_FS);
+    }
+
+    free(vif_verts);
+    free(verts);
+    free(indices);
+    return m;
+}
+
+PcMesh* mesh_from_tfrag(const u8 *vif_data, u32 vif_size) {
+    PcMesh *m = calloc(1, sizeof(PcMesh));
+    
+    u32 max_v = 10000;
+    VifVertex *vif_verts = calloc(max_v, sizeof(VifVertex));
+    
+    /* Use VIF Parser to decode the TFrag payload */
+    u32 count = vif_parse_sector(vif_data, vif_size, vif_verts, max_v);
+    
+    if (count == 0) {
+        free(vif_verts);
+        free(m);
+        return NULL;
+    }
+
+    Vertex *verts = malloc(sizeof(Vertex) * count);
+    u16 *indices = malloc(sizeof(u16) * (count * 4 + 4));
+    u32 idx_ptr = 0;
+    
+    for (u32 i = 0; i < count; i++) {
+        float scale = 1.0f / 1024.0f;
+        verts[i].x = vif_verts[i].x * scale;
+        verts[i].y = vif_verts[i].y * scale;
+        verts[i].z = vif_verts[i].z * scale;
+        verts[i].u = vif_verts[i].u;
+        verts[i].v = vif_verts[i].v;
+        verts[i].nx = 0.0f; verts[i].ny = 1.0f; verts[i].nz = 0.0f;
+
+        /* ADC Bit Logic (Bit 15) */
+        if (i >= 2 && (vif_verts[i].flag & 0x8000) == 0) {
+             indices[idx_ptr++] = 0xFFFF;
+             indices[idx_ptr++] = (u16)(i-1); // Restart strip with prev two
+             indices[idx_ptr++] = (u16)i;
+        }
+        indices[idx_ptr++] = (u16)i;
+    }
+
     glGenVertexArrays(1, &m->vao);
     glGenBuffers(1, &m->vbo);
     glGenBuffers(1, &m->ebo);

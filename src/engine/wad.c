@@ -59,7 +59,7 @@ WadFile* wad_load(const char *path) {
     wad->decompressed_data = malloc(8 * 1024 * 1024); /* Allocate 8MB for decompressed level */
     memcpy(wad->decompressed_data, wad->data, 0x2800);
 
-    for (u32 i = 0; i < size; i += 2048) {
+    for (u32 i = 0x2800; i < size; i += 2048) {
         if (size - i >= 16 && memcmp(&wad->data[i], "WAD", 3) == 0) {
             u32 written = 0;
             decompress_wad_block(&wad->data[i], wad->data + size, wad->decompressed_data, wad->decompressed_size, &written);
@@ -71,7 +71,7 @@ WadFile* wad_load(const char *path) {
 
     /* Search for LevelCoreHeader in the decompressed buffer */
     wad->core_header_offset = 0xFFFFFFFF;
-    for (u32 i = 0; i < wad->decompressed_size - 64; i++) {
+    for (u32 i = 32768; i < wad->decompressed_size - 64; i++) {
         /* Signature: [gs_ram_count=32][gs_ram_offset=5040] */
         u32 count = *(u32*)&wad->decompressed_data[i];
         u32 offset = *(u32*)&wad->decompressed_data[i+4];
@@ -82,7 +82,7 @@ WadFile* wad_load(const char *path) {
             u32 collision_off = *(u32*)&wad->decompressed_data[i+20];
             
             /* If this looks like the dummy MIPS header or has invalid sky offset, skip it */
-            if (sky_off > 0x1000000) {
+            if (sky_off > 0x1000000 || tfrags_off > 0x100000) {
                 continue;
             }
             
@@ -93,6 +93,16 @@ WadFile* wad_load(const char *path) {
             printf("      occlusion: offset=0x%X\n", occlusion_off);
             printf("      sky: offset=0x%X\n", sky_off);
             printf("      collision: offset=0x%X\n", collision_off);
+            
+            u32 real_core_hdr_off = i + sky_off;
+            printf("[WAD] Real core header offset in decompressed buffer: 0x%X\n", real_core_hdr_off);
+            if (real_core_hdr_off + 32 <= wad->decompressed_size) {
+                printf("      Bytes at core_index: ");
+                for (int k = 0; k < 32; k++) {
+                    printf("%02X ", wad->decompressed_data[real_core_hdr_off + k]);
+                }
+                printf("\n");
+            }
             fflush(stdout);
             break;
         }
@@ -103,10 +113,13 @@ WadFile* wad_load(const char *path) {
     wad->core_data_size = 0;
     if (wad->core_header_offset != 0xFFFFFFFF) {
         u32 embedded_wad_offset = 0;
-        for (u32 j = wad->core_header_offset + 0x10; j < wad->decompressed_size - 4; j++) {
+        for (u32 j = wad->core_header_offset + 0x10; j < wad->decompressed_size - 16; j++) {
             if (memcmp(&wad->decompressed_data[j], "WAD", 3) == 0) {
-                embedded_wad_offset = j;
-                break;
+                u32 comp_size = *(u32*)&wad->decompressed_data[j+3];
+                if (comp_size > 0 && j + 16 + comp_size <= wad->decompressed_size) {
+                    embedded_wad_offset = j;
+                    break;
+                }
             }
         }
         
@@ -116,20 +129,25 @@ WadFile* wad_load(const char *path) {
                    embedded_wad_offset, seed_size);
             fflush(stdout);
             
-            // Allocate 8MB for decompressed core_data (including seed)
-            wad->core_data = malloc(8 * 1024 * 1024);
-            memcpy(wad->core_data, &wad->decompressed_data[wad->core_header_offset], seed_size);
+            // Allocate temporary buffer for decompression (including seed)
+            u8 *temp_buffer = malloc(8 * 1024 * 1024);
+            memcpy(temp_buffer, &wad->decompressed_data[wad->core_header_offset], seed_size);
             
             u32 core_data_decomp_size = 0;
             decompress_wad_block(&wad->decompressed_data[embedded_wad_offset], 
                                  &wad->decompressed_data[wad->decompressed_size], 
-                                 wad->core_data, 
+                                 temp_buffer, 
                                  seed_size, 
                                  &core_data_decomp_size);
             
-            wad->core_data_size = seed_size + core_data_decomp_size;
-            printf("[WAD] Decompressed embedded core_data -> %u bytes (total including seed: %u)\n", 
-                   core_data_decomp_size, wad->core_data_size);
+            // Copy decompressed data (excluding seed) to final core_data buffer
+            wad->core_data = malloc(core_data_decomp_size);
+            memcpy(wad->core_data, temp_buffer + seed_size, core_data_decomp_size);
+            wad->core_data_size = core_data_decomp_size;
+            free(temp_buffer);
+            
+            printf("[WAD] Decompressed embedded core_data -> %u bytes\n", 
+                   wad->core_data_size);
             fflush(stdout);
         } else {
             printf("[WAD] WARNING: Could not find embedded core_data WAD block inside Block B!\n");
