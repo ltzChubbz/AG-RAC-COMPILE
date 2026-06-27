@@ -88,6 +88,16 @@ void pad_hal_shutdown(void);
 void pad_hal_update(void);
 
 /**
+ * pad_hal_handle_device_added() — Handle SDL_CONTROLLERDEVICEADDED event.
+ */
+void pad_hal_handle_device_added(int device_index);
+
+/**
+ * pad_hal_handle_device_removed() — Handle SDL_CONTROLLERDEVICEREMOVED event.
+ */
+void pad_hal_handle_device_removed(int joystick_instance_id);
+
+/**
  * pad_hal_get_data() — Get the current pad state for a given port.
  *   @param port   0 = port 1 (player 1), 1 = port 2 (player 2)
  *   @return       Pointer to the current PadData, or NULL if disconnected

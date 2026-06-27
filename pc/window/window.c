@@ -146,6 +146,12 @@ void window_run(void) {
             if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.sym == SDLK_ESCAPE) window_request_quit();
             }
+            else if (event.type == SDL_CONTROLLERDEVICEADDED) {
+                pad_hal_handle_device_added(event.cdevice.which);
+            }
+            else if (event.type == SDL_CONTROLLERDEVICEREMOVED) {
+                pad_hal_handle_device_removed(event.cdevice.which);
+            }
         }
 
             /* ── Update ─────────────────────────────────────────────────────── */

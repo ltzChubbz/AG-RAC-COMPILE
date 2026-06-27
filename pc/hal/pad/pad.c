@@ -55,28 +55,75 @@ void pad_hal_init(void) {
         g_pad.current[i].lx = g_pad.current[i].ly = 128;
         g_pad.current[i].rx = g_pad.current[i].ry = 128;
     }
-    
-    int joystick_count = SDL_NumJoysticks();
-    printf("[PAD-HAL] SDL reports %d joystick(s) connected\n", joystick_count);
 
-    int port = 0;
-    for (int i = 0; i < joystick_count && port < MAX_PORTS; i++) {
+    /* Load gamecontrollerdb.txt if present */
+    FILE *db_file = fopen("gamecontrollerdb.txt", "r");
+    if (db_file) {
+        fclose(db_file);
+        int added = SDL_GameControllerAddMappingsFromFile("gamecontrollerdb.txt");
+        printf("[PAD-HAL] Loaded gamecontrollerdb.txt, added %d mappings\n", added);
+    } else {
+        printf("[PAD-HAL] No gamecontrollerdb.txt found, using built-in mappings\n");
+    }
+    fflush(stdout);
+    
+    g_pad.initialized = 1;
+    printf("[PAD-HAL] Initialization complete\n");
+
+    int joystick_count = SDL_NumJoysticks();
+    printf("[PAD-HAL] SDL reports %d joystick(s) connected at startup\n", joystick_count);
+
+    for (int i = 0; i < joystick_count; i++) {
         const char *name = SDL_JoystickNameForIndex(i);
         int is_controller = SDL_IsGameController(i);
         printf("[PAD-HAL]  - Joystick %d: '%s' (is_controller: %s)\n", 
                i, name ? name : "Unknown", is_controller ? "YES" : "NO");
 
         if (is_controller) {
-            g_pad.controllers[port] = SDL_GameControllerOpen(i);
-            if (g_pad.controllers[port]) {
-                printf("[PAD-HAL]    Mapped to Port %d\n", port + 1);
-                port++;
+            pad_hal_handle_device_added(i);
+        }
+    }
+    fflush(stdout);
+}
+
+void pad_hal_handle_device_added(int device_index) {
+    if (!g_pad.initialized) return;
+    
+    // Find an empty port
+    int port = -1;
+    for (int i = 0; i < MAX_PORTS; i++) {
+        if (g_pad.controllers[i] == NULL) {
+            port = i;
+            break;
+        }
+    }
+    
+    if (port != -1) {
+        g_pad.controllers[port] = SDL_GameControllerOpen(device_index);
+        if (g_pad.controllers[port]) {
+            printf("[PAD-HAL] Controller connected and mapped to Port %d: %s\n", 
+                   port + 1, SDL_GameControllerName(g_pad.controllers[port]));
+            fflush(stdout);
+        }
+    }
+}
+
+void pad_hal_handle_device_removed(int joystick_instance_id) {
+    if (!g_pad.initialized) return;
+    
+    for (int i = 0; i < MAX_PORTS; i++) {
+        if (g_pad.controllers[i]) {
+            SDL_Joystick *joy = SDL_GameControllerGetJoystick(g_pad.controllers[i]);
+            if (joy && SDL_JoystickInstanceID(joy) == joystick_instance_id) {
+                printf("[PAD-HAL] Controller disconnected from Port %d: %s\n", 
+                       i + 1, SDL_GameControllerName(g_pad.controllers[i]));
+                SDL_GameControllerClose(g_pad.controllers[i]);
+                g_pad.controllers[i] = NULL;
+                fflush(stdout);
+                break;
             }
         }
     }
-
-    g_pad.initialized = 1;
-    printf("[PAD-HAL] Initialization complete\n");
 }
 
 void pad_hal_shutdown(void) {
