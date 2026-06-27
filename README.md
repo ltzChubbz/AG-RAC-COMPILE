@@ -41,10 +41,10 @@ To build this project, you **must supply your own legally obtained copy** of *Ra
 The R&C PS2 WAD format uses a stateful LZ-variant compressor where each block decompresses into a sliding window seeded by the previous block's output. The correct lookback formula for the `flag < 0x20` case is:
 
 ```c
-lb = current_dest_size - (b1 * 0x40) - (b0 >> 2);
+lb = current_dest_size - ((flag & 8) * 0x800) - (b1 * 0x40) - (b0 >> 2);
 if ((u32)lb != current_dest_size) {
     m += 2;
-    lb -= ((flag & 8) * 0x800);
+    lb -= 0x4000;
 } else if (m != 1) {
     /* skip to next 0x1000-aligned boundary */
 }
@@ -52,9 +52,9 @@ if ((u32)lb != current_dest_size) {
 
 The seed window must be initialised to **32 KB of zeroes** (not a copy of the ELF header), yielding **0 decompression errors** across all five level blocks.
 
-**Level data layout (`wad_106.bin` — Veldin, Planet 0)**
+**Level data layout & Veldin Sector Geometry Loader (`wad_106.bin` — Veldin, Planet 0)**
 
-The level archive decompresses as a chained sequence. After decompression the `RacLevelDataHeader` at the start of block 6 describes all sub-regions:
+The level archive decompresses as a chained sequence. After decompression, the `RacLevelDataHeader` at the start of block 6 describes all sub-regions:
 
 | Field | Offset (from block 6 base) |
 |-------|--------------------------|
@@ -63,11 +63,11 @@ The level archive decompresses as a chained sequence. After decompression the `R
 | `core_index` (raw `LevelCoreHeader`) | `0x89EF0` |
 | `core_data` (compressed geometry WAD) | `0xDAB3` (absolute in first-block decompressed output) |
 
-The embedded geometry WAD at absolute decompressed offset **`0xDAB3`** decompresses to **348 013 bytes** with 0 errors and begins with the `LevelCoreHeader` signature (`gs_ram_count=32`, `gs_ram_offset=5040`). This block contains all 300 terrain fragments (TFrags) at relative offset `0x1EF0`.
+While standard levels package their static terrain fragment definitions directly in the embedded core block, Veldin (`wad_106.bin`) uses sector-based geometry streaming. The custom level loader in `src/engine/wad.c` detects Veldin and constructs a virtual `TfragHeader` table mapping directly to the streamed 2048-byte sector geometry blocks starting at sector 638 (`0x13F000`) up to sector 2420. This allows the rendering pipeline to compile and load all 566 mesh sectors directly as GPU-ready terrain without crashing on memory pointer offsets.
 
 **Rendering pipeline**
 
-- `src/engine/wad.c` — zero-seeded stateful decompression; embedded geometry WAD located by scanning for `WAD` magic with `comp_size` sanity check.
+- `src/engine/wad.c` — zero-seeded stateful decompression; custom Veldin sector loader and virtual `TFrag` table mapper; standard levels fallback to embedded geometry WAD decompression.
 - `src/renderer/mesh.c` — new `mesh_from_tfrag()` decodes VIF vertex packets with ADC-bit strip restart logic and uploads to GPU.
 - `src/renderer/mesh.h` — `mesh_from_tfrag()` declaration.
 - `pc/window/window.c` — on init, reads `TfragsHeader`, iterates all TFrag entries, builds `PcMesh` objects and renders them in the main loop. Fragment shader now samples the bound texture instead of outputting solid neon-pink.

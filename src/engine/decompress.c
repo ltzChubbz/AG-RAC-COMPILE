@@ -25,11 +25,15 @@ u8* decompress_wad_block(u8* src, u8* src_end, u8* dest, u32 dest_size, u32* out
         }
         
         u8 flag = *ptr++;
+        u8* curr_ptr = ptr - 1;
         u32 m = 0;
         s32 lb = -1;
         
         if (flag < 0x10) {
             u32 lit_size = (flag != 0) ? (flag + 3) : (*ptr++ + 18);
+            if (dest_size == 55987) {
+                printf("[C-TR] lit flag=0x%02X size=%u pos=%u dest_pos=%u\n", flag, lit_size, (u32)(curr_ptr - src), current_dest_size);
+            }
             memcpy(dest + current_dest_size, ptr, lit_size);
             ptr += lit_size;
             current_dest_size += lit_size;
@@ -41,8 +45,12 @@ u8* decompress_wad_block(u8* src, u8* src_end, u8* dest, u32 dest_size, u32* out
                 u8 b0 = *ptr++; u8 b1 = *ptr++;
                 lb = current_dest_size - ((flag & 8) * 0x800) - (b1 * 0x40) - (b0 >> 2);
                 if ((u32)lb != current_dest_size) {
-                    m += 2; lb -= 0x4000;
+                    m += 2;
+                    lb -= 0x4000;
                 } else if (m != 1) {
+                    if (dest_size == 55987) {
+                        printf("[C-TR] align flag=0x%02X pos=%u\n", flag, (u32)(curr_ptr - src));
+                    }
                     // Padding within block
                     while (ptr < end && ((u32)(ptr - begin) % 0x1000 != 0)) ptr++;
                     continue;
@@ -57,6 +65,10 @@ u8* decompress_wad_block(u8* src, u8* src_end, u8* dest, u32 dest_size, u32* out
                 u8 b1 = *ptr++;
                 lb = current_dest_size - (b1 * 8) - ((flag >> 2) & 7) - 1;
                 m = (flag >> 5) + 1;
+            }
+            
+            if (dest_size == 55987) {
+                printf("[C-TR] match flag=0x%02X m=%u lb=%d pos=%u dest_pos=%u\n", flag, m, lb, (u32)(curr_ptr - src), current_dest_size);
             }
             
             if (m != 1) {
@@ -74,6 +86,9 @@ u8* decompress_wad_block(u8* src, u8* src_end, u8* dest, u32 dest_size, u32* out
             // Little literal
             u8 lit = ptr[-2] & 3;
             if (lit > 0) {
+                if (dest_size == 55987) {
+                    printf("[C-TR] lit2 size=%u dest_pos=%u\n", lit, current_dest_size);
+                }
                 memcpy(dest + current_dest_size, ptr, lit);
                 ptr += lit;
                 current_dest_size += lit;
